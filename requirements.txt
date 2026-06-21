@@ -1,0 +1,6 @@
+# Runtime deps for the Vercel serverless function (api/index.py).
+# The MCP server (which also needs `mcp`) is installed separately via pyproject.
+fastapi>=0.110
+yfinance>=0.2.40
+pandas>=2.0
+numpy>=1.24
