@@ -12,6 +12,9 @@ dependencies = [
     "yfinance>=0.2.40",
     "pandas>=2.0",
     "numpy>=1.24",
+    # FastAPI powers the bias web app / Vercel function. Vercel's Python build
+    # installs from this list (via uv), so it must live here, not in extras.
+    "fastapi>=0.110",
 ]
 
 [project.scripts]
@@ -19,7 +22,7 @@ tradingview-mcp = "tradingview_mcp.__main__:main"
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
-web = ["fastapi>=0.110", "uvicorn>=0.29"]
+web = ["uvicorn>=0.29"]  # fastapi is a core dep; this adds the local dev server
 
 [build-system]
 requires = ["hatchling"]
