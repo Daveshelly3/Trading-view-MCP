@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<meta name="theme-color" content="#0b0e14" />
+<title>Bias Board</title>
+<style>
+  :root {
+    --bg: #0b0e14; --card: #151b26; --line: #232c3b;
+    --txt: #e8edf4; --muted: #8b97a7;
+    --bull: #16c784; --bear: #ea3943; --neutral: #f3b01c;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    margin: 0; background: var(--bg); color: var(--txt);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    padding: env(safe-area-inset-top) 16px calc(env(safe-area-inset-bottom) + 16px);
+    max-width: 560px; margin-inline: auto;
+  }
+  header { text-align: center; padding: 22px 0 8px; }
+  h1 { font-size: 1.35rem; margin: 0; letter-spacing: .5px; }
+  .sub { color: var(--muted); font-size: .8rem; margin-top: 4px; }
+  .symbol-row { display: flex; gap: 8px; margin: 16px 0; }
+  input {
+    flex: 1; background: var(--card); border: 1px solid var(--line); color: var(--txt);
+    border-radius: 12px; padding: 14px; font-size: 1rem; outline: none; text-transform: uppercase;
+  }
+  button#run {
+    width: 100%; padding: 18px; font-size: 1.1rem; font-weight: 700;
+    border: none; border-radius: 14px; color: #04140d;
+    background: linear-gradient(135deg, #16c784, #0fa36b);
+    cursor: pointer; transition: transform .05s ease, opacity .2s;
+  }
+  button#run:active { transform: scale(.985); }
+  button#run:disabled { opacity: .6; cursor: default; }
+
+  .overall {
+    margin: 18px 0; padding: 22px; border-radius: 16px; text-align: center;
+    border: 1px solid var(--line); background: var(--card);
+  }
+  .overall .lbl { color: var(--muted); font-size: .75rem; letter-spacing: 1px; text-transform: uppercase; }
+  .overall .verdict { font-size: 2.1rem; font-weight: 800; margin-top: 6px; }
+  .overall .asof { color: var(--muted); font-size: .72rem; margin-top: 8px; }
+
+  .card {
+    display: flex; align-items: center; justify-content: space-between;
+    background: var(--card); border: 1px solid var(--line); border-left-width: 5px;
+    border-radius: 12px; padding: 14px 16px; margin-bottom: 10px;
+  }
+  .card .tf { font-weight: 600; }
+  .card .meta { color: var(--muted); font-size: .72rem; margin-top: 3px; }
+  .pill { font-weight: 800; font-size: .95rem; padding: 6px 12px; border-radius: 999px; }
+
+  .bull  { color: var(--bull); }   .bull-bg  { background: rgba(22,199,132,.15); color: var(--bull); }
+  .bear  { color: var(--bear); }   .bear-bg  { background: rgba(234,57,67,.15);  color: var(--bear); }
+  .neutral { color: var(--neutral); } .neutral-bg { background: rgba(243,176,28,.15); color: var(--neutral); }
+  .b-bull  { border-left-color: var(--bull); }
+  .b-bear  { border-left-color: var(--bear); }
+  .b-neutral { border-left-color: var(--neutral); }
+  .b-na { border-left-color: var(--muted); }
+
+  .price { text-align: right; }
+  .price .px { font-variant-numeric: tabular-nums; font-weight: 600; }
+  .conf { color: var(--muted); font-size: .68rem; }
+  .err { color: var(--bear); font-size: .85rem; text-align: center; padding: 16px; }
+  .disclaimer { color: var(--muted); font-size: .68rem; text-align: center; margin-top: 18px; line-height: 1.5; }
+  .spinner { display:inline-block; width:18px; height:18px; border:3px solid rgba(0,0,0,.25);
+    border-top-color:#04140d; border-radius:50%; animation: spin .7s linear infinite; vertical-align:-3px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+  <header>
+    <h1>📊 Bias Board</h1>
+    <div class="sub">Multi-timeframe technical bias</div>
+  </header>
+
+  <div class="symbol-row">
+    <input id="symbol" value="GC=F" autocomplete="off" spellcheck="false" />
+  </div>
+  <button id="run">Run Analysis</button>
+
+  <div id="output"></div>
+
+  <div class="disclaimer">
+    Educational technical signal only — not financial advice. Gold spot = <b>GC=F</b>.
+    Other tickers: BTC-USD, EURUSD=X, AAPL, ^GSPC.
+  </div>
+
+<script>
+const cls = b => b === "Bullish" ? "bull" : b === "Bearish" ? "bear" : b === "Neutral" ? "neutral" : "na";
+const $ = id => document.getElementById(id);
+
+async function run() {
+  const btn = $("run"), out = $("output");
+  const symbol = ($("symbol").value || "GC=F").trim().toUpperCase();
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Crunching…';
+  out.innerHTML = "";
+  try {
+    const r = await fetch(`/api/bias?symbol=${encodeURIComponent(symbol)}`);
+    const data = await r.json();
+    if (!r.ok || data.error) throw new Error(data.error || "Request failed");
+    render(data);
+  } catch (e) {
+    out.innerHTML = `<div class="err">⚠️ ${e.message}</div>`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Run Analysis";
+  }
+}
+
+function render(data) {
+  const o = cls(data.overall_bias);
+  let html = `
+    <div class="overall">
+      <div class="lbl">${data.symbol} · Overall Bias</div>
+      <div class="verdict ${o}">${data.overall_bias}</div>
+      <div class="asof">as of ${data.as_of}</div>
+    </div>`;
+
+  for (const tf of data.timeframes) {
+    const c = cls(tf.bias);
+    if (tf.error) {
+      html += `<div class="card b-na"><div><div class="tf">${tf.timeframe}</div>
+        <div class="meta">unavailable</div></div>
+        <span class="pill neutral-bg">N/A</span></div>`;
+      continue;
+    }
+    html += `
+      <div class="card b-${c}">
+        <div>
+          <div class="tf">${tf.timeframe}</div>
+          <div class="meta">RSI ${tf.metrics.rsi} · ADX ${tf.metrics.adx} · score ${tf.score>0?'+':''}${tf.score}/${tf.max_score}</div>
+        </div>
+        <div class="price">
+          <span class="pill ${c}-bg">${tf.bias}</span>
+          <div class="px">${tf.price}</div>
+          <div class="conf">conf ${Math.round(tf.confidence*100)}%</div>
+        </div>
+      </div>`;
+  }
+  $("output").innerHTML = html;
+}
+
+$("run").addEventListener("click", run);
+$("symbol").addEventListener("keydown", e => { if (e.key === "Enter") run(); });
+</script>
+</body>
+</html>

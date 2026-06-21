@@ -12,6 +12,7 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 
 from tradingview_mcp import indicators
+from tradingview_mcp.bias import full_bias
 from tradingview_mcp.data import VALID_INTERVALS, VALID_PERIODS, get_ohlcv, get_quote
 from tradingview_mcp.screener import backtest_sma_cross, screen
 
@@ -186,6 +187,19 @@ def backtest(
         period=period,
         initial_cash=initial_cash,
     )
+
+
+@mcp.tool()
+def get_bias(symbol: str = "GC=F") -> dict:
+    """Get a multi-timeframe technical bias (Bullish/Bearish/Neutral) for a symbol.
+
+    Scores trend, momentum and directional-strength signals on each timeframe
+    (15m, 1h, 4h, daily, weekly) plus an overall consensus verdict.
+
+    Args:
+        symbol: Yahoo ticker (default 'GC=F' = gold futures ~= XAUUSD).
+    """
+    return full_bias(symbol)
 
 
 @mcp.tool()

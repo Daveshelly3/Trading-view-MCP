@@ -5,6 +5,7 @@ import pandas as pd
 import pytest
 
 from tradingview_mcp import indicators
+from tradingview_mcp.bias import score_frame
 from tradingview_mcp.screener import evaluate_condition
 
 
@@ -66,6 +67,50 @@ def test_all_registered_indicators_run(ohlcv):
 def test_compute_unknown_raises(ohlcv):
     with pytest.raises(ValueError):
         indicators.compute(ohlcv, "not_a_real_indicator")
+
+
+def test_bias_uptrend_is_bullish():
+    n = 250
+    idx = pd.date_range("2023-01-01", periods=n, freq="D")
+    close = pd.Series(np.linspace(100, 200, n), index=idx)
+    df = pd.DataFrame(
+        {
+            "open": close,
+            "high": close + 1,
+            "low": close - 1,
+            "close": close,
+            "volume": 1e6,
+        },
+        index=idx,
+    )
+    result = score_frame(df)
+    assert result["bias"] == "Bullish"
+    assert -result["max_score"] <= result["score"] <= result["max_score"]
+    assert set(result["signals"]) >= {"price_vs_ema20", "macd_histogram", "rsi"}
+
+
+def test_bias_structure_on_fixture(ohlcv):
+    # Any frame should yield a valid verdict and the full signal set.
+    result = score_frame(ohlcv)
+    assert result["bias"] in {"Bullish", "Bearish", "Neutral"}
+    assert len(result["signals"]) == result["max_score"]
+
+
+def test_bias_downtrend_is_bearish():
+    n = 250
+    idx = pd.date_range("2023-01-01", periods=n, freq="D")
+    close = pd.Series(np.linspace(200, 100, n), index=idx)
+    df = pd.DataFrame(
+        {
+            "open": close,
+            "high": close + 1,
+            "low": close - 1,
+            "close": close,
+            "volume": 1e6,
+        },
+        index=idx,
+    )
+    assert score_frame(df)["bias"] == "Bearish"
 
 
 def test_condition_threshold(ohlcv):

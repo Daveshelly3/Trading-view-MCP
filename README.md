@@ -66,6 +66,30 @@ Inside a session, `/mcp` lists the live tools. Then just ask in plain language,
 e.g. *"screen AAPL, MSFT, NVDA for RSI under 35 on the daily"* — Claude calls
 the tools itself.
 
+## 📱 Mobile bias web app
+
+A one-button mobile web app that runs the multi-timeframe bias (15m, 1h, 4h,
+daily, weekly) and prints **Bullish / Bearish / Neutral** for each, plus an
+overall verdict.
+
+```bash
+uv run --extra web uvicorn webapp.app:app --host 0.0.0.0 --port 8000
+```
+
+Then open `http://<your-computer-ip>:8000` on your phone (same Wi-Fi), or
+`http://localhost:8000` on the same machine. Type a ticker (defaults to `GC=F`,
+gold ≈ XAUUSD), tap **Run Analysis**, and you get a colour-coded board.
+
+The same logic is exposed to Claude as the `get_bias` MCP tool, so you can also
+just ask *"what's the bias on gold across timeframes?"*.
+
+### How the bias is scored
+
+Each timeframe casts 7 votes (price vs EMA20/EMA50, EMA20 vs EMA50, MACD
+histogram, RSI, ADX direction, Stochastic). Score ≥ +2 → **Bullish**,
+≤ −2 → **Bearish**, otherwise **Neutral**. It's a transparent tally, not a
+black box — and it is *not* financial advice.
+
 ## Run it directly
 
 ```bash
