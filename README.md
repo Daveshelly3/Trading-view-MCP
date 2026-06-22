@@ -83,6 +83,18 @@ gold ≈ XAUUSD), tap **Run Analysis**, and you get a colour-coded board.
 The same logic is exposed to Claude as the `get_bias` MCP tool, so you can also
 just ask *"what's the bias on gold across timeframes?"*.
 
+### Caching
+
+Results are cached two ways so repeated taps don't hammer Yahoo:
+
+- **Edge/CDN cache** (in production): responses carry
+  `Cache-Control: s-maxage=60, stale-while-revalidate=300`, so repeat requests
+  within 60s are served from Vercel's edge without invoking the function.
+- **In-process TTL cache**: a 60s thread-safe cache (warm instances + local dev
+  + the MCP tool). Override the window with the `BIAS_CACHE_TTL` env var.
+
+Each response includes a `cached` flag, and the page shows `cached ⚡` vs `live`.
+
 ### How the bias is scored
 
 Each timeframe casts 7 votes (price vs EMA20/EMA50, EMA20 vs EMA50, MACD
