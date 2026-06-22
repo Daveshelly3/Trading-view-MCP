@@ -8,12 +8,21 @@ than a black box.
 
 from __future__ import annotations
 
-from typing import Any
+import os
+import threading
+import time
+from datetime import datetime, timezone
+from typing import Any, Callable
 
 import pandas as pd
 
 from tradingview_mcp import indicators as ta
 from tradingview_mcp.data import get_ohlcv
+
+# Time-to-live (seconds) for cached bias results. Intraday candles update far
+# slower than this, so a short TTL keeps results fresh while shielding Yahoo from
+# repeated taps. Override with the BIAS_CACHE_TTL env var.
+CACHE_TTL = int(os.environ.get("BIAS_CACHE_TTL", "60"))
 
 # label, interval, lookback period. Periods are chosen so EMA50/ADX(14) always
 # have enough bars to be valid on every timeframe.
@@ -132,4 +141,49 @@ def full_bias(symbol: str = "GC=F") -> dict[str, Any]:
         "symbol": symbol.upper(),
         "overall_bias": overall,
         "timeframes": timeframes,
+        "as_of": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
     }
+
+
+class _TTLCache:
+    """Tiny thread-safe time-to-live cache.
+
+    On Vercel this only helps within a single warm function instance (the CDN
+    layer does the heavy lifting via Cache-Control), but it also makes the local
+    dev server and the MCP tool cheap to hammer.
+    """
+
+    def __init__(self) -> None:
+        self._store: dict[str, tuple[float, Any]] = {}
+        self._lock = threading.Lock()
+
+    def get_or_compute(
+        self, key: str, ttl: int, compute: Callable[[], Any]
+    ) -> tuple[Any, bool]:
+        now = time.time()
+        with self._lock:
+            entry = self._store.get(key)
+            if entry is not None and now - entry[0] < ttl:
+                return entry[1], True
+        # Compute outside the lock so a slow fetch doesn't block other symbols.
+        value = compute()
+        with self._lock:
+            self._store[key] = (time.time(), value)
+        return value, False
+
+
+_CACHE = _TTLCache()
+
+
+def cached_bias(symbol: str = "GC=F", ttl: int | None = None) -> dict[str, Any]:
+    """Return :func:`full_bias` for a symbol, served from a TTL cache when warm.
+
+    Adds a ``cached`` flag so callers can tell a fresh computation from a hit.
+    """
+    ttl = CACHE_TTL if ttl is None else ttl
+    key = symbol.upper()
+    data, hit = _CACHE.get_or_compute(key, ttl, lambda: full_bias(symbol))
+    result = dict(data)
+    result["cached"] = hit
+    result["cache_ttl"] = ttl
+    return result

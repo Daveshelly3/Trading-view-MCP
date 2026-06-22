@@ -117,7 +117,7 @@ function render(data) {
     <div class="overall">
       <div class="lbl">${data.symbol} · Overall Bias</div>
       <div class="verdict ${o}">${data.overall_bias}</div>
-      <div class="asof">as of ${data.as_of}</div>
+      <div class="asof">as of ${data.as_of}${data.cached ? " · cached ⚡" : " · live"}</div>
     </div>`;
 
   for (const tf of data.timeframes) {

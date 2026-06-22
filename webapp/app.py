@@ -9,28 +9,27 @@ Then open http://localhost:8000 on your phone (same Wi-Fi) or laptop.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.responses import FileResponse, JSONResponse
 
-from tradingview_mcp.bias import full_bias
+from tradingview_mcp.bias import CACHE_TTL, cached_bias
 
 app = FastAPI(title="Bias Board", docs_url=None, redoc_url=None)
 
 _PUBLIC = Path(__file__).resolve().parent.parent / "public"
+_CACHE_HEADER = f"public, s-maxage={CACHE_TTL}, stale-while-revalidate={CACHE_TTL * 5}"
 
 
 @app.get("/api/bias")
 def api_bias(symbol: str = "GC=F") -> JSONResponse:
     """Return the multi-timeframe bias for ``symbol`` (default gold futures)."""
     try:
-        data = full_bias(symbol)
+        data = cached_bias(symbol)
     except Exception as exc:  # noqa: BLE001
         return JSONResponse({"error": str(exc)}, status_code=502)
-    data["as_of"] = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-    return JSONResponse(data)
+    return JSONResponse(data, headers={"Cache-Control": _CACHE_HEADER})
 
 
 @app.get("/")

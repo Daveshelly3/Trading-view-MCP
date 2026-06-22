@@ -5,7 +5,7 @@ import pandas as pd
 import pytest
 
 from tradingview_mcp import indicators
-from tradingview_mcp.bias import score_frame
+from tradingview_mcp.bias import _TTLCache, score_frame
 from tradingview_mcp.screener import evaluate_condition
 
 
@@ -111,6 +111,25 @@ def test_bias_downtrend_is_bearish():
         index=idx,
     )
     assert score_frame(df)["bias"] == "Bearish"
+
+
+def test_ttl_cache_hits_and_expires():
+    cache = _TTLCache()
+    calls = {"n": 0}
+
+    def compute():
+        calls["n"] += 1
+        return calls["n"]
+
+    v1, hit1 = cache.get_or_compute("k", ttl=60, compute=compute)
+    v2, hit2 = cache.get_or_compute("k", ttl=60, compute=compute)
+    assert (v1, hit1) == (1, False)  # first call computes
+    assert (v2, hit2) == (1, True)  # second call served from cache
+    assert calls["n"] == 1
+
+    # ttl=0 forces every call to recompute (expiry path).
+    v3, hit3 = cache.get_or_compute("k", ttl=0, compute=compute)
+    assert hit3 is False and v3 == 2
 
 
 def test_condition_threshold(ohlcv):
