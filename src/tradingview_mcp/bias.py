@@ -17,7 +17,8 @@ from typing import Any, Callable
 import pandas as pd
 
 from tradingview_mcp import indicators as ta
-from tradingview_mcp.data import get_ohlcv
+from tradingview_mcp.data import GOLD_SYMBOLS, get_ohlcv, get_spot_xauusd
+from tradingview_mcp.levels import key_levels
 
 # Time-to-live (seconds) for cached bias results. Intraday candles update far
 # slower than this, so a short TTL keeps results fresh while shielding Yahoo from
@@ -105,24 +106,50 @@ def score_frame(df: pd.DataFrame) -> dict[str, Any]:
     }
 
 
-def bias_for_timeframe(symbol: str, label: str, interval: str, period: str) -> dict[str, Any]:
-    """Compute the bias for one labelled timeframe, fetching data as needed."""
+def bias_for_timeframe(
+    symbol: str, label: str, interval: str, period: str, offset: float = 0.0
+) -> dict[str, Any]:
+    """Compute the bias + key levels for one labelled timeframe."""
     df = get_ohlcv(symbol, interval=interval, period=period)
     if label in _RESAMPLE:
         df = _resample(df, _RESAMPLE[label])
     result = score_frame(df)
+    result["levels"] = key_levels(df, offset=offset)
     result.update({"timeframe": label, "interval": interval, "bars": len(df)})
     return result
 
 
 def full_bias(symbol: str = "GC=F") -> dict[str, Any]:
-    """Compute bias across every timeframe plus an overall consensus verdict."""
+    """Compute bias + key levels across every timeframe plus a consensus verdict.
+
+    For gold (GC=F/MGC=F) levels are converted from futures to XAUUSD spot using
+    a live spot quote; for other symbols levels stay in the instrument's price.
+    """
+    is_gold = symbol.upper() in GOLD_SYMBOLS
+    spot: float | None = None
+    if is_gold:
+        try:
+            spot = get_spot_xauusd()
+        except Exception:  # noqa: BLE001 - fall back to futures-priced levels
+            spot = None
+
+    offset = 0.0
+    offset_set = False
     timeframes = []
     score_sum = 0
     counted = 0
     for label, interval, period in TIMEFRAMES:
         try:
-            tf = bias_for_timeframe(symbol, label, interval, period)
+            df = get_ohlcv(symbol, interval=interval, period=period)
+            if label in _RESAMPLE:
+                df = _resample(df, _RESAMPLE[label])
+            # Derive the futures->spot basis once, from the freshest frame.
+            if spot is not None and not offset_set:
+                offset = float(df["close"].iloc[-1]) - spot
+                offset_set = True
+            tf = score_frame(df)
+            tf["levels"] = key_levels(df, offset=offset)
+            tf.update({"timeframe": label, "interval": interval, "bars": len(df)})
             timeframes.append(tf)
             score_sum += tf["score"]
             counted += 1
@@ -142,6 +169,9 @@ def full_bias(symbol: str = "GC=F") -> dict[str, Any]:
         "overall_bias": overall,
         "timeframes": timeframes,
         "as_of": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+        "levels_currency": "XAUUSD spot" if (is_gold and spot is not None) else symbol.upper(),
+        "spot": round(spot, 2) if spot is not None else None,
+        "basis": round(offset, 2) if offset_set else None,
     }
 
 

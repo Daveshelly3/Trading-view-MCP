@@ -6,6 +6,7 @@ import pytest
 
 from tradingview_mcp import indicators
 from tradingview_mcp.bias import _TTLCache, score_frame
+from tradingview_mcp.levels import key_levels
 from tradingview_mcp.screener import evaluate_condition
 
 
@@ -111,6 +112,29 @@ def test_bias_downtrend_is_bearish():
         index=idx,
     )
     assert score_frame(df)["bias"] == "Bearish"
+
+
+def test_key_levels_split_and_offset(ohlcv):
+    raw = key_levels(ohlcv, offset=0.0)
+    # Resistance strictly above current, support strictly below.
+    assert all(l["price"] > raw["current"] for l in raw["resistance"])
+    assert all(l["price"] < raw["current"] for l in raw["support"])
+    # Nearest-first ordering.
+    res_prices = [l["price"] for l in raw["resistance"]]
+    sup_prices = [l["price"] for l in raw["support"]]
+    assert res_prices == sorted(res_prices)
+    assert sup_prices == sorted(sup_prices, reverse=True)
+    assert raw["atr"] > 0
+
+    # An offset (futures->spot basis) shifts every level down by that amount.
+    shifted = key_levels(ohlcv, offset=15.0)
+    assert shifted["current"] == round(raw["current"] - 15.0, 2)
+    if raw["resistance"] and shifted["resistance"]:
+        assert shifted["resistance"][0]["price"] == round(
+            raw["resistance"][0]["price"] - 15.0, 2
+        )
+        # Distance from price is invariant to the offset.
+        assert shifted["resistance"][0]["dist"] == raw["resistance"][0]["dist"]
 
 
 def test_ttl_cache_hits_and_expires():

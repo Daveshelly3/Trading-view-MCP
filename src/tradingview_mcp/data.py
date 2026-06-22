@@ -7,10 +7,36 @@ where the data came from.
 
 from __future__ import annotations
 
+import time
 from functools import lru_cache
 
 import pandas as pd
+import requests
 import yfinance as yf
+
+# Yahoo serves gold *futures* (GC=F), not XAUUSD spot. To report levels in spot
+# numbers we pull a live spot quote from gold-api.com (free, no key) and use the
+# basis (futures - spot) to convert. Symbols treated as gold for this purpose:
+GOLD_SYMBOLS = {"GC=F", "MGC=F"}
+_SPOT_URL = "https://api.gold-api.com/price/XAU"
+_spot_cache: dict[str, tuple[float, float]] = {}  # key -> (timestamp, price)
+
+
+def get_spot_xauusd(ttl: int = 60) -> float:
+    """Return the live XAUUSD spot price (USD/oz) from gold-api.com.
+
+    Cached for ``ttl`` seconds. Raises on network/parse failure so callers can
+    fall back to reporting futures-based levels.
+    """
+    now = time.time()
+    hit = _spot_cache.get("xau")
+    if hit and now - hit[0] < ttl:
+        return hit[1]
+    resp = requests.get(_SPOT_URL, timeout=8)
+    resp.raise_for_status()
+    price = float(resp.json()["price"])
+    _spot_cache["xau"] = (now, price)
+    return price
 
 # Intervals Yahoo accepts. We surface them so the MCP tool can validate input
 # and give the model a clear error instead of an opaque upstream failure.

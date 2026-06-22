@@ -68,6 +68,30 @@
   .spinner { display:inline-block; width:18px; height:18px; border:3px solid rgba(0,0,0,.25);
     border-top-color:#04140d; border-radius:50%; animation: spin .7s linear infinite; vertical-align:-3px; }
   @keyframes spin { to { transform: rotate(360deg); } }
+
+  .hint { color: var(--muted); font-size: .72rem; text-align: center; margin: 4px 0 12px; }
+  .card-wrap { margin-bottom: 10px; }
+  .card[data-i] { margin-bottom: 0; cursor: pointer; user-select: none; }
+  .caret { color: var(--muted); font-size: .75rem; transition: transform .2s; display: inline-block; }
+  .card-wrap.open .caret { transform: rotate(180deg); }
+  .levels {
+    display: none; background: #10151f; border: 1px solid var(--line); border-top: none;
+    border-radius: 0 0 12px 12px; padding: 10px 14px 12px; margin-top: -1px;
+  }
+  .card-wrap.open .levels { display: block; }
+  .card-wrap.open .card[data-i] { border-radius: 12px 12px 0 0; }
+  .lvl-head { color: var(--muted); font-size: .7rem; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 8px; }
+  .lvl-row { display: flex; justify-content: space-between; align-items: center;
+    font-variant-numeric: tabular-nums; padding: 5px 0; font-size: .9rem; border-bottom: 1px solid rgba(255,255,255,.04); }
+  .lvl-row:last-child { border-bottom: none; }
+  .lvl-name { color: var(--muted); flex: 1; }
+  .lvl-px { font-weight: 700; width: 90px; text-align: right; }
+  .lvl-dist { width: 70px; text-align: right; font-size: .75rem; color: var(--muted); }
+  .lvl-row.res .lvl-px { color: var(--bear); }
+  .lvl-row.sup .lvl-px { color: var(--bull); }
+  .lvl-row.cur { background: rgba(255,255,255,.05); border-radius: 6px; margin: 3px 0; padding: 6px 6px; }
+  .lvl-row.cur .lvl-name, .lvl-row.cur .lvl-px { color: var(--txt); font-weight: 800; }
+  .lvl-empty { color: var(--muted); font-size: .8rem; padding: 4px 0; }
 </style>
 </head>
 <body>
@@ -111,37 +135,76 @@ async function run() {
   }
 }
 
+function levelRows(list, kind) {
+  if (!list || !list.length) return `<div class="lvl-empty">none in range</div>`;
+  return list.map(l => `
+    <div class="lvl-row ${kind}">
+      <span class="lvl-name">${l.name}</span>
+      <span class="lvl-px">${l.price.toFixed(2)}</span>
+      <span class="lvl-dist">${kind === 'res' ? '+' : '-'}${l.dist.toFixed(2)}</span>
+    </div>`).join("");
+}
+
+function levelsPanel(tf, currency) {
+  const lv = tf.levels;
+  if (!lv) return "";
+  return `
+    <div class="levels">
+      <div class="lvl-head">Key levels · <b>${currency}</b> · ATR ${lv.atr.toFixed(2)}</div>
+      ${levelRows(lv.resistance, 'res')}
+      <div class="lvl-row cur"><span class="lvl-name">Current</span>
+        <span class="lvl-px">${lv.current.toFixed(2)}</span><span class="lvl-dist"></span></div>
+      ${levelRows(lv.support, 'sup')}
+    </div>`;
+}
+
 function render(data) {
   const o = cls(data.overall_bias);
+  const ccy = data.levels_currency || data.symbol;
+  const spotLine = data.spot != null
+    ? `<div class="asof">XAUUSD spot ${data.spot} · basis ${data.basis>=0?'+':''}${data.basis}</div>` : "";
   let html = `
     <div class="overall">
       <div class="lbl">${data.symbol} · Overall Bias</div>
       <div class="verdict ${o}">${data.overall_bias}</div>
       <div class="asof">as of ${data.as_of}${data.cached ? " · cached ⚡" : " · live"}</div>
-    </div>`;
+      ${spotLine}
+    </div>
+    <div class="hint">tap a timeframe for key levels ▾</div>`;
 
-  for (const tf of data.timeframes) {
+  data.timeframes.forEach((tf, i) => {
     const c = cls(tf.bias);
     if (tf.error) {
       html += `<div class="card b-na"><div><div class="tf">${tf.timeframe}</div>
         <div class="meta">unavailable</div></div>
         <span class="pill neutral-bg">N/A</span></div>`;
-      continue;
+      return;
     }
     html += `
-      <div class="card b-${c}">
-        <div>
-          <div class="tf">${tf.timeframe}</div>
-          <div class="meta">RSI ${tf.metrics.rsi} · ADX ${tf.metrics.adx} · score ${tf.score>0?'+':''}${tf.score}/${tf.max_score}</div>
+      <div class="card-wrap">
+        <div class="card b-${c}" data-i="${i}">
+          <div>
+            <div class="tf">${tf.timeframe} <span class="caret">▾</span></div>
+            <div class="meta">RSI ${tf.metrics.rsi} · ADX ${tf.metrics.adx} · score ${tf.score>0?'+':''}${tf.score}/${tf.max_score}</div>
+          </div>
+          <div class="price">
+            <span class="pill ${c}-bg">${tf.bias}</span>
+            <div class="px">${tf.price}</div>
+            <div class="conf">conf ${Math.round(tf.confidence*100)}%</div>
+          </div>
         </div>
-        <div class="price">
-          <span class="pill ${c}-bg">${tf.bias}</span>
-          <div class="px">${tf.price}</div>
-          <div class="conf">conf ${Math.round(tf.confidence*100)}%</div>
-        </div>
+        ${levelsPanel(tf, ccy)}
       </div>`;
-  }
+  });
   $("output").innerHTML = html;
+
+  // Tap a card to toggle its levels panel.
+  document.querySelectorAll(".card[data-i]").forEach(card => {
+    card.addEventListener("click", () => {
+      const wrap = card.closest(".card-wrap");
+      wrap.classList.toggle("open");
+    });
+  });
 }
 
 $("run").addEventListener("click", run);
